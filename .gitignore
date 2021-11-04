@@ -2,8 +2,9 @@
 .Rhistory
 .RData
 .Ruserdata
-.tweets_cleaned.csv
-.covid_vaccine_v36.csv
-.covid_vaccine_admistrated.csv
-.covid_cases.csv
-.uscities.csv
+tweets_cleaned.csv
+tweets_cases_vaccine.csv
+covid_vaccine_v36.csv
+covid_vaccine_admistrated.csv
+covid_cases.csv
+uscities.csv

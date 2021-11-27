@@ -8,3 +8,10 @@ covid_vaccine_v36.csv
 covid_vaccine_admistrated.csv
 covid_cases.csv
 uscities.csv
+.DS_Store
+Mean Sentiment by Date.png
+Mean Sentiment by State After Vaccination.png
+Mean Sentiment by State Before Vaccination.png
+Mean Sentiment by State.png
+Tweeter Users Distribution.png
+txet_wc.png

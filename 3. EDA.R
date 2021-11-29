@@ -3,9 +3,15 @@ library(tidyverse)
 library(lubridate)
 library(maps)
 library(ggthemes)
+library(dplyr)
+library(zoo)
 
 #### Load datasets
 tweets_sentiment <- read.csv("tweets_sentiment.csv", header = TRUE)
+vaccine <- read.csv("covid_vaccine_admistrated.csv", header = TRUE)
+cases <- read.csv("covid_cases.csv", header = TRUE)
+vaccine$Date <- as.Date(parse_date_time(vaccine$Date, 'mdY', tz = "UTC"))
+cases$submission_date <- as.Date(parse_date_time(cases$submission_date, 'mdY', tz = "UTC"))
 tweets_sentiment$date <- as.Date(tweets_sentiment$date)
 cities <- read.csv("uscities.csv", header = TRUE)
 us_states <- map_data("state")
@@ -97,5 +103,42 @@ ggplot(data = senti_state_after, mapping = aes(x = long, y = lat, group = group,
   labs(fill = "Sentiment")
 ggsave("Mean Sentiment by State After Vaccination.png")
 
+### 6. Vaccine Rates Trend
+cases %>% group_by(submission_date) %>%
+  summarise(case = mean(new_case)) %>%
+  ggplot(aes(x = submission_date, y = case)) + 
+  geom_smooth() +
+  theme_light() +
+  labs(x = "Date", y = "New Cases", title = "Mean New Cases by Date")
+ggsave("Mean New Cases by Date.png")
+
+cases %>% group_by(submission_date) %>%
+  summarise(case = mean(new_death)) %>%
+  ggplot(aes(x = submission_date, y = case)) + 
+  geom_smooth() +
+  theme_light() +
+  labs(x = "Date", y = "New Deaths", title = "Mean New Deaths by Date")
+ggsave("Mean New Deaths by Date.png")
+
+library(zoo)
+
+vaccine <- vaccine %>% group_by(Location) %>%
+  arrange(Location, Date) %>%
+  mutate(Admin_New = rollapply(Admin_Per_100K, 2, diff , align = 'right', fill = NA))
 
 
+vaccine %>% group_by(Date) %>%
+  summarise(admin = mean(Admin_New)) %>%
+  ggplot(aes(x = Date, y = admin)) + 
+  geom_smooth() +
+  theme_light() +
+  labs(x = "Date", y = "New Administrated Per 100K", title = "New Administrated Per 100K by Date")
+
+ggsave("New Administrated Per 100K by Date.png")
+
+vaccine <- subset(vaccine, select = c(Date, Location, Admin_New))
+tweets_sentiment <- merge(tweets_sentiment, vaccine, by.x = c("date", "user_state"), 
+                              by.y = c("Date", "Location"), all.x = TRUE)
+tweets_sentiment$Admin_New[is.na(tweets_sentiment$Admin_New)] = 0
+
+#write.csv(tweets_sentiment, "tweets_sentiment.csv", row.names = FALSE)

@@ -36,10 +36,10 @@ ggplot(data = user_distribution, mapping = aes(x = long, y = lat, group = group,
   geom_polygon(color = "gray90", size = 0.1) +
   coord_map(projection = "albers", lat0 = 39, lat1 = 45) + 
   scale_fill_gradient2(low = "white", high = "#CB454A") +
-  labs(title = "Tweeter Users Distribution") + 
   theme_map() + 
-  labs(fill = "Count")
-ggsave("Tweeter Users Distribution.png")
+  labs(fill = "Count") +
+  theme(legend.position = "right", plot.margin = unit(c(1, 1, 1, 1), "pt"))
+ggsave("user_dist.png", width = 6, height = 4)
 
 
 ### 2. mean Sentiment by state - All time

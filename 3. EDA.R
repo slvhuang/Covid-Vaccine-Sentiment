@@ -5,6 +5,7 @@ library(maps)
 library(ggthemes)
 library(dplyr)
 library(zoo)
+library(ggpubr)
 
 #### Load datasets
 tweets_sentiment <- read.csv("tweets_sentiment.csv", header = TRUE)
@@ -39,7 +40,7 @@ ggplot(data = user_distribution, mapping = aes(x = long, y = lat, group = group,
   theme_map() + 
   labs(fill = "Count") +
   theme(legend.position = "right", plot.margin = unit(c(1, 1, 1, 1), "pt"))
-ggsave("user_dist.png", width = 6, height = 4)
+ggsave(path = "graphs", filename = "user_dist.png", width = 6, height = 4)
 
 
 ### 2. mean Sentiment by state - All time
@@ -51,11 +52,11 @@ senti_state <- tweets_sentiment %>%
 ggplot(data = senti_state, mapping = aes(x = long, y = lat, group = group, fill = mean_senti)) +
   geom_polygon(color = "gray90", size = 0.1) +
   coord_map(projection = "albers", lat0 = 39, lat1 = 45) + 
-  labs(title = "Mean Sentiment by State") + 
-  scale_fill_gradient2() +
+  scale_fill_gradient2(limit = c(-0.6, 0.8)) +
   theme_map() + 
-  labs(fill = "Sentiment")
-ggsave("Mean Sentiment by State.png")
+  labs(fill = "Sentiment") +
+  theme(legend.position = "right", plot.margin = unit(c(1, 1, 1, 1), "pt"))
+ggsave(path = "graphs", filename = "senti_state_all.png", width = 6, height = 4)
 
 
 ### 3. Time Series for Mean Sentiment Trend
@@ -64,12 +65,13 @@ tweets_sentiment %>%
   summarize(mean_senti = mean(sentiment)) %>%
   ggplot(aes(x = date, y = mean_senti, color = mean_senti)) + 
   geom_point() +
-  theme_light() + 
-  labs(title = "Mean Sentiment by Date", x = "Date", y = "Mean Sentiment", color = "Sentiment") +
+  theme_classic() +
+  scale_y_continuous(expand = c(0, 0)) +
+  labs(x = "Date", y = "Mean Sentiment", color = "Sentiment") +
   geom_smooth(span = 0.4, color = "dark green") +
-  theme(legend.position = "bottom") +
-  geom_vline(xintercept = as.Date("2020-12-25"))
-ggsave("Mean Sentiment by Date.png")
+  geom_vline(xintercept = as.Date("2020-12-25"), linetype="dashed", color = "black", size=1) +
+  geom_label(aes(as.Date("2020-12-25"), 1.2), label = "Vaccinenation Start", show.legend = FALSE)
+ggsave(path = "graphs", filename = "senti_time_all.png", width = 6, height = 4)
 
 
 ### 4. Mean Sentiment by state - Before Vaccination
@@ -78,15 +80,15 @@ senti_state_before <- before_vac %>%
   summarize(mean_senti = mean(sentiment)) %>% 
   left_join(us_states, by = c("state_name" = "region"))
 
-ggplot(data = senti_state_before, mapping = aes(x = long, y = lat, group = group, fill = mean_senti)) +
+senti_state_bef <- ggplot(data = senti_state_before, mapping = aes(x = long, y = lat, group = group, fill = mean_senti)) +
   geom_polygon(color = "gray90", size = 0.1) +
   coord_map(projection = "albers", lat0 = 39, lat1 = 45) + 
-  labs(title = "Mean Sentiment by State Before Vaccination") + 
-  scale_fill_gradient2() +
+  scale_fill_gradient2(limits=c(-0.6, 0.8)) +
   theme_map() + 
-  labs(fill = "Sentiment")
-ggsave("Mean Sentiment by State Before Vaccination.png")
-
+  labs(subtitle = "Before Mass Vaccination", fill = "Sentiment") +
+  theme(legend.position = "bottom", plot.margin = unit(c(1, 1, 1, 1), "pt"))
+senti_state_bef
+ggsave(path = "graphs", filename = "senti_state_before.png", width = 6, height = 4)
 
 ### 5. Mean Sentiment by state - After Vaccination
 senti_state_after <- after_vac %>% 
@@ -94,31 +96,40 @@ senti_state_after <- after_vac %>%
   summarize(mean_senti = mean(sentiment)) %>% 
   left_join(us_states, by = c("state_name" = "region"))
 
-ggplot(data = senti_state_after, mapping = aes(x = long, y = lat, group = group, fill = mean_senti)) +
+senti_state_af <- ggplot(data = senti_state_after, mapping = aes(x = long, y = lat, group = group, fill = mean_senti)) +
   geom_polygon(color = "gray90", size = 0.1) +
   coord_map(projection = "albers", lat0 = 39, lat1 = 45) + 
-  labs(title = "Mean Sentiment by State After Vaccination") + 
-  scale_fill_gradient2() +
+  scale_fill_gradient2(limits=c(-0.6, 0.8)) +
   theme_map() + 
-  labs(fill = "Sentiment")
-ggsave("Mean Sentiment by State After Vaccination.png")
+  labs(subtitle = "After Mass Vaccination", fill = "Sentiment") +
+  theme(legend.position = "bottom", plot.margin = unit(c(1, 1, 1, 1), "pt"))
+senti_state_af
+ggsave(path = "graphs", filename = "senti_state_after.png", width = 6, height = 4)
+
+ggarrange(senti_state_bef, senti_state_af, ncol = 2, nrow = 1)
+ggsave(path = "graphs", filename = "senti_state_b+a.png", width = 12, height = 4)
 
 ### 6. Vaccine Rates Trend
 cases %>% group_by(submission_date) %>%
   summarise(case = mean(new_case)) %>%
-  ggplot(aes(x = submission_date, y = case)) + 
-  geom_smooth() +
-  theme_light() +
-  labs(x = "Date", y = "New Cases", title = "Mean New Cases by Date")
-ggsave("Mean New Cases by Date.png")
+  ggplot(aes(x = submission_date, y = case, color = case)) + 
+  geom_point() +
+  theme_classic() +
+  scale_y_continuous(expand = c(0, 0)) +
+  labs(x = "Date", y = "New Cases", color = "Mean New Cases") +
+  theme(legend.position = "bottom", plot.margin = unit(c(1, 1, 1, 1), "pt"))
+ggsave(path = "graphs", filename = "case_time.png", width = 6, height = 4)
 
 cases %>% group_by(submission_date) %>%
   summarise(case = mean(new_death)) %>%
-  ggplot(aes(x = submission_date, y = case)) + 
-  geom_smooth() +
-  theme_light() +
-  labs(x = "Date", y = "New Deaths", title = "Mean New Deaths by Date")
-ggsave("Mean New Deaths by Date.png")
+  ggplot(aes(x = submission_date, y = case, color = case)) + 
+  geom_point() +
+  theme_classic() +
+  scale_y_continuous(expand = c(0, 0)) +
+  labs(x = "Date", y = "New Deaths", color = "Mean New Deaths") +
+  theme(legend.position = "bottom", plot.margin = unit(c(1, 1, 1, 1), "pt"))
+ggsave(path = "graphs", filename = "death_time.png", width = 6, height = 4)
+
 
 library(zoo)
 

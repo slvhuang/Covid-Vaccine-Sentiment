@@ -9,15 +9,4 @@ covid_vaccine_admistrated.csv
 covid_cases.csv
 uscities.csv
 .DS_Store
-Mean Sentiment by Date.png
-Mean Sentiment by State After Vaccination.png
-Mean Sentiment by State Before Vaccination.png
-Mean Sentiment by State.png
-Tweeter Users Distribution.png
-txet_wc.png
-Mean New Cases by Date.png
-Mean New Deaths by Date.png
-New Administrated Per 100K by Date.png
-Rplot.png
-user_dist.png
-senti_bar.png
+graphs

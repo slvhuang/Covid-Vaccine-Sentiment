@@ -23,3 +23,23 @@ colnames(tweets_sentiment) <- tolower(colnames(tweets_sentiment))
 tweets_sentiment[is.na(tweets_sentiment)] <- 0
 #write.csv(tweets_sentiment, "tweets_sentiment.csv", row.names=FALSE)
 
+tweets <- iconv(tweets_cases_vaccine$text)
+senti <- get_nrc_sentiment(tweets)
+#write.csv(senti, "nrc_sentiment.csv", row.names=FALSE)
+
+#calculationg total score for each sentiment
+senti_score<-data.frame(colSums(senti[,]))
+
+names(senti_score)<-"Score"
+senti_score<-cbind("sentiment"=rownames(senti_score),senti_score)
+rownames(senti_score)<-NULL
+
+
+#plotting the sentiments with scores
+ggplot(data = senti_score, aes(x = sentiment,y = Score))+geom_bar(aes(fill = sentiment), stat = "identity") +
+  theme(legend.position = "none")+
+  theme_light() +
+  xlab("Sentiments") + 
+  ylab("Scores") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
+ggsave("senti_bar.png", width = 6, height = 4)

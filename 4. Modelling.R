@@ -15,7 +15,7 @@ cov(after_vac)
 
 
 # Basic model
-mod0 <-  lm(admin_per_100k ~ sentiment, 
+mod0 <-  lm(admin_per_100k ~ sentiment - 1, 
             data = after_vac)
 summary(mod0)
 
@@ -56,4 +56,7 @@ summary(mod6)
 mod6a <- lm(admin_per_100k ~ sentiment*tot_cases*new_case, 
            data = after_vac)
 summary(mod6a)
+
+# State
+
 

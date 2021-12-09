@@ -1,0 +1,570 @@
+---
+title: "ECON 490 Data Analysis"
+author: 'Shijia Huang'
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r set-up, include=FALSE}
+library(tidyverse)
+library(lubridate)
+library(twitteR)
+library(tm)
+library(wordcloud)
+library(syuzhet)
+library(zoo)
+library(maps)
+library(ggthemes)
+library(dplyr)
+library(ggpubr)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, error = TRUE)
+```
+
+
+
+
+
+
+
+
+# Part 1: Data Preprocessing and Cleaning
+
+```{r}
+# Load raw datasets
+tweets <- read.csv("covid_vaccine_v36.csv", header = TRUE)
+vaccine <- read.csv("covid_vaccine_admistrated.csv", header = TRUE)
+cases <- read.csv("covid_cases.csv", header = TRUE)
+cities <- read.csv("uscities.csv", header = TRUE)
+```
+
+
+## Tweets data cleaning
+
+```{r}
+# Cleaning Date: convert chr date and time to date object
+tweets <- tweets[!tweets$date == "", ]
+tweets$date <- as.Date(parse_date_time(tweets$date, orders = c('dmY HM', 'Ymd HMS'), tz = "UTC"))
+tweets <-  tweets[!is.na(tweets$date), ]
+
+# Cleaning and match user_location
+# remove empty user_location rows
+tweets <- tweets[!tweets$user_location == "", ]
+# filter and cleaning location only in US cities
+# Find the 10 most frequent locations
+tail(names(sort(table(tweets$user_location))), 10)
+
+# Roughly remove rows where user_location not in US
+rmv <- c("India", "United Kingdom", "England", "London", "UK", "Canada", "Australia")
+for(i in 1:length(rmv)) {
+  tweets <- filter(tweets, str_detect(user_location, regex(rmv[i], ignore_case = T), 
+                                      negate = TRUE))
+}
+
+# get rid of all non-ASCII characters
+tweets$user_location <- sapply(tweets$user_location,
+                               function(row) iconv(row, "latin1", "ASCII", sub=""))
+tweets <- tweets[!tweets$user_location == "", ]
+```
+
+### 1. Strict match location by the format City, State
+
+```{r}
+tweets <- add_column(tweets, user_state = rep(NA), .after = "user_location")
+format1 <- str_c(cities$city_ascii, cities$state_id, sep = ", ", collapse = NULL)
+cities <- add_column(cities, format1 = format1, .after = "state_name")
+
+for (i in 1:length(tweets$user_location)) {
+  lca <- tweets$user_location[i]
+  j <- match(lca, cities$format1)
+  state <- cities$state_id[j]
+  tweets$user_state[i] <- state
+}
+
+
+tweets_left <- tweets[is.na(tweets$user_state),]
+tweets <- tweets[!is.na(tweets$user_state),]
+
+# see what we get
+ggplot(tweets, aes(user_state)) + geom_bar()
+```
+
+### 2. Strict match location by the format City,State
+
+```{r}
+format2 <- str_c(cities$city_ascii, cities$state_id, sep = ",", collapse = NULL)
+cities <- add_column(cities, format2 = format2, .after = "format1")
+
+for (i in 1:length(tweets_left$user_location)) {
+  lca <- tweets_left$user_location[i]
+  j <- match(lca, cities$format2)
+  state <- cities$state_id[j]
+  tweets_left$user_state[i] <- state
+}
+
+tweets <- rbind(tweets, tweets_left[!is.na(tweets_left$user_state),])
+tweets_left <- tweets_left[is.na(tweets_left$user_state),]
+
+# see what we get now
+ggplot(tweets, aes(user_state)) + geom_bar()
+```
+
+### 3. Strict match location by the State Name
+
+```{r}
+for (i in 1:length(tweets_left$user_location)) {
+  lca <- tweets_left$user_location[i]
+  j <- match(lca, cities$state_name)
+  state <- cities$state_id[j]
+  tweets_left$user_state[i] <- state
+}
+
+tweets <- rbind(tweets, tweets_left[!is.na(tweets_left$user_state),])
+tweets_left <- tweets_left[is.na(tweets_left$user_state),]
+
+# see what we get now
+ggplot(tweets, aes(user_state)) + geom_bar()
+```
+
+### 4. Strict match location by the format State, USA
+
+```{r}
+format3 <- str_c(cities$state_name, "USA", sep = ", ", collapse = NULL)
+states <- unique(cbind.data.frame(cities$state_id, cities$state_name, format3))
+colnames(states) <- c("state_id", "state_name", "format3")
+
+for (i in 1:length(tweets_left$user_location)) {
+  lca <- tweets_left$user_location[i]
+  j <- match(lca, states$format3)
+  state <- states$state_id[j]
+  tweets_left$user_state[i] <- state
+}
+
+tweets <- rbind(tweets, tweets_left[!is.na(tweets_left$user_state),])
+tweets_left <- tweets_left[is.na(tweets_left$user_state),]
+
+# see what we get now and save the filtered file
+ggplot(tweets, aes(user_state)) + geom_bar()
+
+#write.csv(tweets, "tweets_cleaned.csv", row.names=FALSE)
+```
+
+### Cleaning tweets text
+
+```{r}
+# Load cleaned file
+tweets <- read.csv("tweets_cleaned.csv", header = TRUE)
+tweets$date <- as.Date(tweets$date)
+
+# Convert all text to lower case
+tweets$text <- iconv(tweets$text, "latin1", "ASCII", "")
+tweets$text <- tolower(tweets$text)
+
+# Replace @UserName
+tweets$text <- gsub("@\\w+", "", tweets$text)
+
+# Remove punctuation
+tweets$text <- gsub("[[:punct:]]", "", tweets$text)
+
+# Remove links
+tweets$text <- gsub("http\\w+", "", tweets$text)
+
+# Replace tabs
+tweets$text <- gsub("[ |\t]{2,}", " ", tweets$text)
+
+# Replace blank space
+tweets$text <- gsub("\\s+"," ", tweets$text)
+
+# Remove blank spaces at the beginning
+tweets$text <- gsub("^ ", "", tweets$text)
+
+# Remove blank spaces at the end
+tweets$text <- gsub(" $", "", tweets$text)
+
+# Drop NA rows
+tweets <- tweets[!is.na(tweets$text), ]
+tweets <- tweets[!tweets$text == "", ]
+```
+
+
+## Vaccine data cleaning
+
+```{r}
+# Convert chr date and time to datetime
+vaccine$Date <- as.Date(parse_date_time(vaccine$Date, 'mdY', tz = "UTC"))
+```
+
+
+## Cases data cleaning
+
+```{r}
+# Convert chr date and time to datetime
+cases$submission_date <- as.Date(parse_date_time(cases$submission_date, 'mdY', tz = "UTC"))
+```
+
+
+## Combine datasets 
+
+```{r}
+tweets <- subset(tweets, select = c(user_name, user_location, user_state, date, 
+                                    text, hashtags))
+cases <- subset(cases, select = c(submission_date, state, tot_cases, new_case, tot_death, 
+                                  new_death))
+vaccine <- subset(vaccine, select = c(Date, Location, Admin_Per_100K))
+
+# merge and save the merged data
+tweets_cases <- merge(tweets, cases, by.x = c("date", "user_state"), 
+                      by.y = c("submission_date", "state"))
+tweets_cases_vaccine <- merge(tweets_cases, vaccine, by.x = c("date", "user_state"), 
+                              by.y = c("Date", "Location"), all.x = TRUE)
+
+#write.csv(tweets_cases_vaccine, "tweets_cases_vaccine.csv", row.names=FALSE)
+```
+
+
+
+
+
+
+
+
+# Part 2: Sentiment Analysis
+
+```{r}
+# Load the merged data
+tweets_cases_vaccine <- read.csv("tweets_cases_vaccine.csv", header = TRUE)
+
+# Remove unnecessary words
+tweets_cases_vaccine$text <- gsub("covidvaccine", "", tweets_cases_vaccine$text)
+tweets_cases_vaccine$text <- gsub("covid19", "", tweets_cases_vaccine$text)
+tweets_cases_vaccine$text <- gsub("covid", "", tweets_cases_vaccine$text)
+tweets_cases_vaccine$text <- gsub("vaccine", "", tweets_cases_vaccine$text)
+
+```
+
+## Sentiment Analysis
+
+```{r}
+syuzhet <- get_sentiment(tweets_cases_vaccine$text, method="syuzhet")
+tweets_sentiment <- add_column(tweets_cases_vaccine, sentiment = syuzhet, .after = "text")
+colnames(tweets_sentiment) <- tolower(colnames(tweets_sentiment))
+tweets_sentiment[is.na(tweets_sentiment)] <- 0
+#write.csv(tweets_sentiment, "tweets_sentiment.csv", row.names=FALSE)
+```
+
+```{r}
+# Compute total sentiment score and save the data
+tweets <- iconv(tweets_cases_vaccine$text)
+senti <- get_nrc_sentiment(tweets)
+#write.csv(senti, "nrc_sentiment.csv", row.names=FALSE)
+```
+
+## Visualize most frequent words
+
+```{r}
+wordcloud(tweets_cases_vaccine$text, min.freq = 1000, 
+          colors = brewer.pal(8, "Dark2"),
+          random.color = TRUE, 
+          random.order = F, 
+          max.words = 50, 
+          scale = c(5, 0.3))
+```
+
+## Visualize sentiment scores
+
+```{r}
+# calculate total score for each sentiment
+senti <- read.csv("nrc_sentiment.csv", header = T)
+senti_score <- data.frame(colSums(senti[,]))
+names(senti_score) <- "Score"
+senti_score <- cbind("sentiment" = rownames(senti_score), senti_score)
+rownames(senti_score) <- NULL
+
+#plotting the sentiments with scores
+ggplot(data = senti_score, aes(x = sentiment,y = Score))+geom_bar(aes(fill = sentiment), stat = "identity") +
+  theme(legend.position = "none")+
+  theme_light() +
+  xlab("Sentiments") + 
+  ylab("Scores") +
+  theme_classic() +
+  scale_y_continuous(expand = c(0, 0)) +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
+ggsave(path = "graphs", filename = "senti_bar.png", width = 6, height = 4)
+```
+
+
+
+
+
+
+
+
+# Part 3: Exploretory Data Analysis
+
+```{r}
+# Load datasets
+tweets_sentiment <- read.csv("tweets_sentiment.csv", header = TRUE)
+vaccine <- read.csv("covid_vaccine_admistrated.csv", header = TRUE)
+cases <- read.csv("covid_cases.csv", header = TRUE)
+cities <- read.csv("uscities.csv", header = TRUE)
+
+tweets_sentiment$date <- as.Date(tweets_sentiment$date)
+vaccine$Date <- as.Date(parse_date_time(vaccine$Date, 'mdY', tz = "UTC"))
+cases$submission_date <- as.Date(parse_date_time(cases$submission_date, 'mdY', tz = "UTC"))
+
+us_states <- map_data("state")
+```
+
+### Map state_id to state name
+
+```{r}
+state_names <- cities %>% select(state_id, state_name) %>% distinct()
+tweets_sentiment <- merge(tweets_sentiment, state_names, by.x = "user_state", by.y = "state_id")
+tweets_sentiment$state_name <- tolower(tweets_sentiment$state_name)
+```
+
+### Split data before/after the start of vaccination
+
+```{r}
+before_vac <- tweets_sentiment[tweets_sentiment$admin_per_100k == 0,]
+after_vac <- tweets_sentiment[tweets_sentiment$admin_per_100k != 0,]
+```
+
+### 1. Distribution of twitter users by state - All time
+
+```{r}
+user_distribution <- tweets_sentiment %>% 
+  group_by(state_name, user_name) %>%
+  summarize(n =  n()) %>%
+  summarize(count =  n()) %>%
+  left_join(us_states, by = c("state_name" = "region"))
+
+ggplot(data = user_distribution, mapping = aes(x = long, y = lat, group = group, fill = count)) +
+  geom_polygon(color = "gray90", size = 0.1) +
+  coord_map(projection = "albers", lat0 = 39, lat1 = 45) + 
+  scale_fill_gradient2(low = "white", high = "#CB454A") +
+  theme_map() + 
+  labs(fill = "Count") +
+  theme(legend.position = "right", plot.margin = unit(c(1, 1, 1, 1), "pt"))
+ggsave(path = "graphs", filename = "user_dist.png", width = 6, height = 4)
+```
+
+### 2. Mean sentiment by state - All time
+
+```{r}
+senti_state <- tweets_sentiment %>% 
+  group_by(state_name) %>% 
+  summarize(mean_senti = mean(sentiment)) %>% 
+  left_join(us_states, by = c("state_name" = "region"))
+
+ggplot(data = senti_state, mapping = aes(x = long, y = lat, group = group, fill = mean_senti)) +
+  geom_polygon(color = "gray90", size = 0.1) +
+  coord_map(projection = "albers", lat0 = 39, lat1 = 45) + 
+  scale_fill_gradient2(limit = c(-0.6, 0.8)) +
+  theme_map() + 
+  labs(fill = "Sentiment") +
+  theme(legend.position = "right", plot.margin = unit(c(1, 1, 1, 1), "pt"))
+ggsave(path = "graphs", filename = "senti_state_all.png", width = 6, height = 4)
+```
+
+### 3. Mean Sentiment by state - Before Vaccination
+
+```{r}
+senti_state_before <- before_vac %>% 
+  group_by(state_name) %>% 
+  summarize(mean_senti = mean(sentiment)) %>% 
+  left_join(us_states, by = c("state_name" = "region"))
+
+senti_state_bef <- ggplot(data = senti_state_before, mapping = aes(x = long, y = lat, group = group, fill = mean_senti)) +
+  geom_polygon(color = "gray90", size = 0.1) +
+  coord_map(projection = "albers", lat0 = 39, lat1 = 45) + 
+  scale_fill_gradient2(limits=c(-0.6, 0.8)) +
+  theme_map() + 
+  labs(subtitle = "Before Mass Vaccination", fill = "Sentiment") +
+  theme(legend.position = "bottom", plot.margin = unit(c(1, 1, 1, 1), "pt"))
+senti_state_bef
+ggsave(path = "graphs", filename = "senti_state_before.png", width = 6, height = 4)
+```
+
+### 5. Mean Sentiment by state - After Vaccination
+
+```{r}
+senti_state_after <- after_vac %>% 
+  group_by(state_name) %>% 
+  summarize(mean_senti = mean(sentiment)) %>% 
+  left_join(us_states, by = c("state_name" = "region"))
+
+senti_state_af <- ggplot(data = senti_state_after, mapping = aes(x = long, y = lat, group = group, fill = mean_senti)) +
+  geom_polygon(color = "gray90", size = 0.1) +
+  coord_map(projection = "albers", lat0 = 39, lat1 = 45) + 
+  scale_fill_gradient2(limits=c(-0.6, 0.8)) +
+  theme_map() + 
+  labs(subtitle = "After Mass Vaccination", fill = "Sentiment") +
+  theme(legend.position = "bottom", plot.margin = unit(c(1, 1, 1, 1), "pt"))
+senti_state_af
+ggsave(path = "graphs", filename = "senti_state_after.png", width = 6, height = 4)
+
+# combine before and after plots together
+ggarrange(senti_state_bef, senti_state_af, ncol = 2, nrow = 1)
+ggsave(path = "graphs", filename = "senti_state_b+a.png", width = 12, height = 4)
+```
+
+### 5. Time Series for Mean Sentiment Trend
+
+```{r}
+tweets_sentiment %>% 
+  group_by(date) %>% 
+  summarize(mean_senti = mean(sentiment)) %>%
+  ggplot(aes(x = date, y = mean_senti, color = mean_senti)) + 
+  geom_point() +
+  theme_classic() +
+  scale_y_continuous(expand = c(0, 0)) +
+  labs(x = "Date", y = "Mean Sentiment", color = "Sentiment") +
+  geom_smooth(span = 0.4, color = "dark green") +
+  geom_vline(xintercept = as.Date("2020-12-25"), linetype="dashed", color = "black", size=1) +
+  geom_label(aes(as.Date("2020-12-25"), 1.2), label = "Vaccination Start", show.legend = FALSE)
+ggsave(path = "graphs", filename = "senti_time_all.png", width = 6, height = 4)
+```
+
+### 6. Covid Cases and Death Trend
+
+```{r}
+cases %>% group_by(submission_date) %>%
+  summarise(case = mean(new_case)) %>%
+  ggplot(aes(x = submission_date, y = case, color = case)) + 
+  geom_point() +
+  theme_classic() +
+  scale_y_continuous(expand = c(0, 0)) +
+  labs(x = "Date", y = "New Cases", color = "Mean New Cases") +
+  theme(legend.position = "bottom", plot.margin = unit(c(1, 1, 1, 1), "pt"))
+ggsave(path = "graphs", filename = "case_time.png", width = 6, height = 4)
+
+cases %>% group_by(submission_date) %>%
+  summarise(case = mean(new_death)) %>%
+  ggplot(aes(x = submission_date, y = case, color = case)) + 
+  geom_point() +
+  theme_classic() +
+  scale_y_continuous(expand = c(0, 0)) +
+  labs(x = "Date", y = "New Deaths", color = "Mean New Deaths") +
+  theme(legend.position = "bottom", plot.margin = unit(c(1, 1, 1, 1), "pt"))
+ggsave(path = "graphs", filename = "death_time.png", width = 6, height = 4)
+```
+
+### 7. Vaccination rates trend
+
+```{r}
+vaccine <- vaccine %>% group_by(Location) %>%
+  arrange(Location, Date) %>%
+  mutate(Admin_New = rollapply(Admin_Per_100K, 2, diff , align = 'right', fill = NA))
+
+vaccine %>% group_by(Date) %>%
+  summarise(admin = mean(Admin_New)) %>%
+  ggplot(aes(x = Date, y = admin, color = admin)) + 
+  geom_point() +
+  theme_classic() +
+  scale_y_continuous(expand = c(0, 0)) +
+  labs(x = "Date", y = "Administrated Per 100K", color = "Admin Per 100K") +
+  theme(legend.position = "bottom", plot.margin = unit(c(1, 1, 1, 1), "pt"))
+ggsave(path = "graphs", filename = "vac_time.png", width = 6, height = 4)
+```
+
+```{r}
+# save admin_new as a new feature
+#vaccine <- subset(vaccine, select = c(Date, Location, Admin_New))
+#tweets_sentiment <- merge(tweets_sentiment, vaccine, by.x = c("date", "user_state"), 
+#                              by.y = c("Date", "Location"), all.x = TRUE)
+#tweets_sentiment$Admin_New[is.na(tweets_sentiment$Admin_New)] = 0
+#write.csv(tweets_sentiment, "tweets_sentiment.csv", row.names = FALSE)
+```
+
+
+
+
+
+
+
+
+# Part 4: Modelling
+
+```{r}
+# Load final data
+tweets_sentiment <- read.csv("tweets_sentiment.csv", header = TRUE)
+tweets_sentiment$date <- as.Date(tweets_sentiment$date)
+after_vac <- tweets_sentiment[tweets_sentiment$admin_per_100k != 0,]
+```
+
+## Standardize variables
+
+```{r}
+after_vac <- after_vac %>% select("admin_per_100k", "new_case", "new_death", "sentiment", "tot_cases", "tot_death") %>%
+  mutate_all(scale)
+
+cov(after_vac)
+```
+
+## Basic model
+
+```{r}
+mod0 <-  lm(admin_per_100k ~ sentiment, 
+            data = after_vac)
+summary(mod0)
+```
+
+## Death
+
+```{r}
+mod1 <- lm(admin_per_100k ~  new_death + sentiment, 
+           data = after_vac)
+summary(mod1)
+```
+
+```{r}
+mod2 <- lm(admin_per_100k ~  new_death + sentiment + tot_death, 
+           data = after_vac)
+summary(mod2)
+```
+
+```{r}
+mod3 <- lm(admin_per_100k ~  sentiment  + new_death*tot_death, 
+           data = after_vac)
+summary(mod3)
+```
+
+```{r}
+mod3a <- lm(admin_per_100k ~  sentiment*new_death*tot_death, 
+           data = after_vac)
+summary(mod3a)
+```
+
+## Cases
+
+```{r}
+mod4 <- lm(admin_per_100k ~  new_case + sentiment,
+           data = after_vac)
+summary(mod4)
+```
+
+```{r}
+mod5 <- lm(admin_per_100k ~  tot_cases + sentiment + new_case, 
+           data = after_vac)
+summary(mod5)
+```
+
+```{r}
+mod6 <- lm(admin_per_100k ~ sentiment + tot_cases*new_case, 
+           data = after_vac)
+summary(mod6)
+```
+
+```{r}
+mod6a <- lm(admin_per_100k ~ sentiment*tot_cases*new_case, 
+           data = after_vac)
+summary(mod6a)
+```
+
+
+
+
+
+
+
+

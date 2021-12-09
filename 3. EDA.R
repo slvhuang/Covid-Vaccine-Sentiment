@@ -70,7 +70,7 @@ tweets_sentiment %>%
   labs(x = "Date", y = "Mean Sentiment", color = "Sentiment") +
   geom_smooth(span = 0.4, color = "dark green") +
   geom_vline(xintercept = as.Date("2020-12-25"), linetype="dashed", color = "black", size=1) +
-  geom_label(aes(as.Date("2020-12-25"), 1.2), label = "Vaccinenation Start", show.legend = FALSE)
+  geom_label(aes(as.Date("2020-12-25"), 1.2), label = "Vaccination Start", show.legend = FALSE)
 ggsave(path = "graphs", filename = "senti_time_all.png", width = 6, height = 4)
 
 
@@ -131,8 +131,6 @@ cases %>% group_by(submission_date) %>%
 ggsave(path = "graphs", filename = "death_time.png", width = 6, height = 4)
 
 
-library(zoo)
-
 vaccine <- vaccine %>% group_by(Location) %>%
   arrange(Location, Date) %>%
   mutate(Admin_New = rollapply(Admin_Per_100K, 2, diff , align = 'right', fill = NA))
@@ -141,7 +139,7 @@ vaccine <- vaccine %>% group_by(Location) %>%
 vaccine %>% group_by(Date) %>%
   summarise(admin = mean(Admin_New)) %>%
   ggplot(aes(x = Date, y = admin)) + 
-  geom_smooth() +
+  geom_point() +
   theme_light() +
   labs(x = "Date", y = "New Administrated Per 100K", title = "New Administrated Per 100K by Date")
 

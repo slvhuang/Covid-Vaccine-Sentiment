@@ -18,6 +18,7 @@ library(ggthemes)
 library(dplyr)
 library(ggpubr)
 library(AER)
+library(plm)
 knitr::opts_chunk$set(warning = FALSE, message = FALSE, error = TRUE)
 ```
 
@@ -492,97 +493,93 @@ ggsave(path = "graphs", filename = "vac_time.png", width = 6, height = 4)
 ```{r}
 # Load final data
 tweets_sentiment <- read.csv("tweets_sentiment.csv", header = TRUE)
+vaccine <- read.csv("covid_vaccine_admistrated.csv", header = TRUE)
+cases <- read.csv("covid_cases.csv", header = TRUE)
+cities <- read.csv("uscities.csv", header = TRUE)
+
 tweets_sentiment$date <- as.Date(tweets_sentiment$date)
-before_vac <- tweets_sentiment[tweets_sentiment$admin_per_100k == 0,]
-after_vac <- tweets_sentiment[tweets_sentiment$admin_per_100k != 0,]
+vaccine$Date <- as.Date(parse_date_time(vaccine$Date, 'mdY', tz = "UTC"))
+cases$submission_date <- as.Date(parse_date_time(cases$submission_date, 'mdY', tz = "UTC"))
+
+summary(tweets_sentiment)
 ```
 
-## Count observations
+## Count observations (user + date)
 
 ```{r}
-dim(tweets_sentiment %>% group_by(user_name, date) %>% 
-  summarize(n = n()))[1]
+tweets_obs <- tweets_sentiment %>% group_by(user_state, date) %>% 
+  summarize(sentiment = mean(sentiment))
+  
+cases <- subset(cases, select = c(submission_date, state, tot_cases, new_case, tot_death, 
+                                  new_death))
+vaccine <- subset(vaccine, select = c(Date, Location, Admin_Per_100K))
 
-dim(before_vac %>% group_by(user_name, date) %>% 
-  summarize(n = n()))[1]
+# merge and save the merged data
+tweets_obs <- merge(tweets_obs, cases, by.x = c("date", "user_state"), 
+                      by.y = c("submission_date", "state"))
+tweets_obs <- merge(tweets_obs, vaccine, by.x = c("date", "user_state"), 
+                              by.y = c("Date", "Location"), all.x = TRUE)
 
-dim(after_vac %>% group_by(user_name, date) %>% 
-  summarize(n = n()))[1]
+colnames(tweets_obs) <- tolower(colnames(tweets_obs))
+tweets_obs$admin_per_100k[is.na(tweets_obs$admin_per_100k)] = 0
+
+before_vac <- tweets_obs[tweets_obs$admin_per_100k == 0,]
+after_vac <- tweets_obs[tweets_obs$admin_per_100k != 0,]
+
+summary(tweets_obs)
 ```
 
-## Standardize variables
+## Covariance Matrix
 
 ```{r}
-after_vac <- after_vac %>% select("admin_per_100k", "new_case", "new_death", "sentiment", "tot_cases", "tot_death") %>%
-  mutate_all(scale)
-
-cov(after_vac)
+cov(after_vac %>% select("admin_per_100k", "new_case", "new_death", "sentiment", "tot_cases", "tot_death"))
 ```
 
 ## Basic model
 
 ```{r}
-mod0 <-  lm(admin_per_100k ~ sentiment, 
-            data = after_vac)
+mod0 <- lm(admin_per_100k ~ sentiment, data = after_vac)
 summary(mod0)
 ```
 
-## Death
+
 
 ```{r}
-mod1 <- lm(admin_per_100k ~  new_death + sentiment, 
+mod1 <- lm(admin_per_100k ~ sentiment + user_state,
            data = after_vac)
 summary(mod1)
 ```
 
+
+
 ```{r}
-mod2 <- lm(admin_per_100k ~  new_death + sentiment + tot_death, 
+mod2 <- lm(admin_per_100k ~  new_death + new_case + sentiment + user_state, 
            data = after_vac)
 summary(mod2)
 ```
 
 ```{r}
-mod3 <- lm(admin_per_100k ~  sentiment  + new_death*tot_death, 
+mod3 <- lm(admin_per_100k ~  new_death*new_case + sentiment + user_state, 
            data = after_vac)
 summary(mod3)
 ```
 
-```{r}
-mod3a <- lm(admin_per_100k ~  sentiment*new_death*tot_death, 
-           data = after_vac)
-summary(mod3a)
-```
-
-## Cases
 
 ```{r}
-mod4 <- lm(admin_per_100k ~  new_case + sentiment,
-           data = after_vac)
-summary(mod4)
+library(stargazer)
+
+rob_se <- list(sqrt(diag(vcovHC(mod0, type = "HC1"))),
+               sqrt(diag(vcovHC(mod1, type = "HC1"))),
+               sqrt(diag(vcovHC(mod2, type = "HC1"))),
+               sqrt(diag(vcovHC(mod3, type = "HC1"))))
+
+stargazer(mod0, mod1, mod2, mod3,
+          digits = 3,
+          header = FALSE,
+          type = "latex", 
+          se = rob_se,
+          title = "Linear Regression Models",
+          model.numbers = FALSE,
+          column.labels = c("(1)", "(2)", "(3)", "(4)"))
+
 ```
-
-```{r}
-mod5 <- lm(admin_per_100k ~  tot_cases + sentiment + new_case, 
-           data = after_vac)
-summary(mod5)
-```
-
-```{r}
-mod6 <- lm(admin_per_100k ~ sentiment + tot_cases*new_case, 
-           data = after_vac)
-summary(mod6)
-```
-
-```{r}
-mod6a <- lm(admin_per_100k ~ sentiment*tot_cases*new_case, 
-           data = after_vac)
-summary(mod6a)
-```
-
-
-
-
-
-
-
-

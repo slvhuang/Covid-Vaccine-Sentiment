@@ -17,6 +17,7 @@ library(maps)
 library(ggthemes)
 library(dplyr)
 library(ggpubr)
+library(AER)
 knitr::opts_chunk$set(warning = FALSE, message = FALSE, error = TRUE)
 ```
 
@@ -27,7 +28,7 @@ knitr::opts_chunk$set(warning = FALSE, message = FALSE, error = TRUE)
 
 
 
-# Part 1: Data Preprocessing and Cleaning
+# Part 1: Data Preprocessing and Cleaning (long running time!!!)
 
 ```{r}
 # Load raw datasets
@@ -85,7 +86,7 @@ tweets_left <- tweets[is.na(tweets$user_state),]
 tweets <- tweets[!is.na(tweets$user_state),]
 
 # see what we get
-ggplot(tweets, aes(user_state)) + geom_bar()
+ggplot(tweets, aes(user_state)) + geom_bar() + coord_flip()
 ```
 
 ### 2. Strict match location by the format City,State
@@ -105,7 +106,7 @@ tweets <- rbind(tweets, tweets_left[!is.na(tweets_left$user_state),])
 tweets_left <- tweets_left[is.na(tweets_left$user_state),]
 
 # see what we get now
-ggplot(tweets, aes(user_state)) + geom_bar()
+ggplot(tweets, aes(user_state)) + geom_bar() + coord_flip()
 ```
 
 ### 3. Strict match location by the State Name
@@ -122,7 +123,7 @@ tweets <- rbind(tweets, tweets_left[!is.na(tweets_left$user_state),])
 tweets_left <- tweets_left[is.na(tweets_left$user_state),]
 
 # see what we get now
-ggplot(tweets, aes(user_state)) + geom_bar()
+ggplot(tweets, aes(user_state)) + geom_bar() + coord_flip()
 ```
 
 ### 4. Strict match location by the format State, USA
@@ -143,7 +144,7 @@ tweets <- rbind(tweets, tweets_left[!is.na(tweets_left$user_state),])
 tweets_left <- tweets_left[is.na(tweets_left$user_state),]
 
 # see what we get now and save the filtered file
-ggplot(tweets, aes(user_state)) + geom_bar()
+ggplot(tweets, aes(user_state)) + geom_bar() + coord_flip()
 
 #write.csv(tweets, "tweets_cleaned.csv", row.names=FALSE)
 ```
@@ -151,7 +152,7 @@ ggplot(tweets, aes(user_state)) + geom_bar()
 ### Cleaning tweets text
 
 ```{r}
-# Load cleaned file
+# reload cleaned file
 tweets <- read.csv("tweets_cleaned.csv", header = TRUE)
 tweets$date <- as.Date(tweets$date)
 
@@ -252,7 +253,7 @@ tweets_sentiment[is.na(tweets_sentiment)] <- 0
 ```
 
 ```{r}
-# Compute total sentiment score and save the data
+# Compute total sentiment score and save the data (takes a lot of time!!!!)
 tweets <- iconv(tweets_cases_vaccine$text)
 senti <- get_nrc_sentiment(tweets)
 #write.csv(senti, "nrc_sentiment.csv", row.names=FALSE)
@@ -432,20 +433,22 @@ cases %>% group_by(submission_date) %>%
   summarise(case = mean(new_case)) %>%
   ggplot(aes(x = submission_date, y = case, color = case)) + 
   geom_point() +
+  geom_smooth(span = 0.4, color = "dark green") +
   theme_classic() +
   scale_y_continuous(expand = c(0, 0)) +
   labs(x = "Date", y = "New Cases", color = "Mean New Cases") +
-  theme(legend.position = "bottom", plot.margin = unit(c(1, 1, 1, 1), "pt"))
+  theme(legend.position = "right", plot.margin = unit(c(1, 1, 1, 1), "pt"))
 ggsave(path = "graphs", filename = "case_time.png", width = 6, height = 4)
 
 cases %>% group_by(submission_date) %>%
   summarise(case = mean(new_death)) %>%
   ggplot(aes(x = submission_date, y = case, color = case)) + 
   geom_point() +
+  geom_smooth(span = 0.4, color = "dark green") +
   theme_classic() +
   scale_y_continuous(expand = c(0, 0)) +
   labs(x = "Date", y = "New Deaths", color = "Mean New Deaths") +
-  theme(legend.position = "bottom", plot.margin = unit(c(1, 1, 1, 1), "pt"))
+  theme(legend.position = "right", plot.margin = unit(c(1, 1, 1, 1), "pt"))
 ggsave(path = "graphs", filename = "death_time.png", width = 6, height = 4)
 ```
 
@@ -460,10 +463,11 @@ vaccine %>% group_by(Date) %>%
   summarise(admin = mean(Admin_New)) %>%
   ggplot(aes(x = Date, y = admin, color = admin)) + 
   geom_point() +
+  geom_smooth(span = 0.4, color = "dark green") +
   theme_classic() +
   scale_y_continuous(expand = c(0, 0)) +
   labs(x = "Date", y = "Administrated Per 100K", color = "Admin Per 100K") +
-  theme(legend.position = "bottom", plot.margin = unit(c(1, 1, 1, 1), "pt"))
+  theme(legend.position = "right", plot.margin = unit(c(1, 1, 1, 1), "pt"))
 ggsave(path = "graphs", filename = "vac_time.png", width = 6, height = 4)
 ```
 
@@ -489,7 +493,21 @@ ggsave(path = "graphs", filename = "vac_time.png", width = 6, height = 4)
 # Load final data
 tweets_sentiment <- read.csv("tweets_sentiment.csv", header = TRUE)
 tweets_sentiment$date <- as.Date(tweets_sentiment$date)
+before_vac <- tweets_sentiment[tweets_sentiment$admin_per_100k == 0,]
 after_vac <- tweets_sentiment[tweets_sentiment$admin_per_100k != 0,]
+```
+
+## Count observations
+
+```{r}
+dim(tweets_sentiment %>% group_by(user_name, date) %>% 
+  summarize(n = n()))[1]
+
+dim(before_vac %>% group_by(user_name, date) %>% 
+  summarize(n = n()))[1]
+
+dim(after_vac %>% group_by(user_name, date) %>% 
+  summarize(n = n()))[1]
 ```
 
 ## Standardize variables

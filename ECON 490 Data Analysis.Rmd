@@ -541,7 +541,7 @@ cov(after_vac %>% select("admin_per_100k", "new_case", "new_death", "sentiment",
 ## Basic model
 
 ```{r}
-mod0 <- lm(admin_per_100k ~ sentiment, data = after_vac)
+mod0 <- lm(admin_per_100k ~ sentiment + user_state, data = after_vac)
 summary(mod0)
 ```
 

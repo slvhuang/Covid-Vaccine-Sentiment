@@ -526,6 +526,8 @@ tweets_obs$admin_per_100k[is.na(tweets_obs$admin_per_100k)] = 0
 before_vac <- tweets_obs[tweets_obs$admin_per_100k == 0,]
 after_vac <- tweets_obs[tweets_obs$admin_per_100k != 0,]
 
+after_vac %>% filter()
+
 summary(tweets_obs)
 ```
 
@@ -545,7 +547,7 @@ summary(mod0)
 
 
 ```{r}
-mod1 <- lm(admin_per_100k ~ sentiment + user_state,
+mod1 <- lm(admin_per_100k ~ sentiment + user_state - 1,
            data = after_vac)
 summary(mod1)
 ```
@@ -553,13 +555,13 @@ summary(mod1)
 
 
 ```{r}
-mod2 <- lm(admin_per_100k ~  new_death + new_case + sentiment + user_state, 
+mod2 <- lm(admin_per_100k ~  new_death + new_case + sentiment + user_state - 1, 
            data = after_vac)
 summary(mod2)
 ```
 
 ```{r}
-mod3 <- lm(admin_per_100k ~  new_death*new_case + sentiment + user_state, 
+mod3 <- lm(admin_per_100k ~  new_death*new_case + sentiment + user_state - 1, 
            data = after_vac)
 summary(mod3)
 ```

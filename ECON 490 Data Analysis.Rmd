@@ -280,9 +280,12 @@ senti_score <- data.frame(colSums(senti[,]))
 names(senti_score) <- "Score"
 senti_score <- cbind("sentiment" = rownames(senti_score), senti_score)
 rownames(senti_score) <- NULL
+senti_score <- subset(senti_score, sentiment!="positive" & sentiment!="negative")
+
 
 #plotting the sentiments with scores
-ggplot(data = senti_score, aes(x = sentiment,y = Score))+geom_bar(aes(fill = sentiment), stat = "identity") +
+ggplot(data = senti_score, aes(x = reorder(sentiment, -Score),y = Score)) + 
+  geom_bar(aes(fill = Score), stat = "identity") +
   theme(legend.position = "none")+
   theme_light() +
   xlab("Sentiments") + 
@@ -525,8 +528,6 @@ tweets_obs$admin_per_100k[is.na(tweets_obs$admin_per_100k)] = 0
 
 before_vac <- tweets_obs[tweets_obs$admin_per_100k == 0,]
 after_vac <- tweets_obs[tweets_obs$admin_per_100k != 0,]
-
-after_vac %>% filter()
 
 summary(tweets_obs)
 ```
